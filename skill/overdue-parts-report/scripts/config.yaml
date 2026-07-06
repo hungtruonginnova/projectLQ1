@@ -1,0 +1,51 @@
+# Tunable rules for the Overdue Parts Report pipeline.
+# Edit these lists as the business criteria evolve - no code changes needed.
+
+# InvMaster CODE_SORT values that are normally excluded (consumables / tooling /
+# raw laminate materials that aren't tracked as individually critical).
+drop_code_sorts:
+  - CONSUMABLE
+  - LAM CONS
+  - TOOL CONS
+  - TOOL MAN
+  - LAMINATE
+  - FOAM
+  - RESIN/GEL
+  - PAINT/CHEM
+
+# If a part would be dropped by drop_code_sorts but its vendor name matches one of
+# these keywords (case-insensitive substring), keep it and flag for human review
+# instead of deleting it (e.g. imported chemicals with long lead times).
+critical_vendor_keywords:
+  - AKZONOBEL
+  - AKZO NOBEL
+  - NUPLEX
+  - MIDWAY
+
+# If a part would be dropped by drop_code_sorts or the local-vendor rule but its
+# part number / description matches one of these keywords, keep + flag instead.
+critical_part_keywords: []
+
+# Vendor-address keywords used to detect "local" (Vietnam-based) vendors for the
+# local-parts removal rule.
+local_vendor_keywords:
+  - VIET NAM
+  - VIETNAM
+
+# Boat planning window (relative to --report-date):
+#  - only boats completing within this many months ahead are checked;
+#  - boats already completed before (report_date - done_buffer_days) are dropped.
+# Confirmed against WK27: the included boats spanned ~11 months of completion dates.
+horizon_months: 11
+done_buffer_days: 45
+
+# GAP (ETA REQUIRED - ETA) threshold, in days, at/below which an item is likely
+# no longer a production risk - flagged for review (not auto-removed).
+gap_days_not_urgent: 7
+
+# OPD QTY_OPEN values at/under this are treated as "no real open quantity" -
+# covers closed/cancelled/dropship/NCR/non-part PO lines that use this sentinel.
+qty_open_sentinel: 0.0001
+
+# Output file naming: "OVERDUE PARTS REPORT WK{week} ({date}) PQ.xlsx"
+output_dir: "output"
