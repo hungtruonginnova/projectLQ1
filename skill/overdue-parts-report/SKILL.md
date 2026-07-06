@@ -71,43 +71,52 @@ excluded.
 Each row is then enriched by joining:
 - **InvMaster** on part number → on-hand qty, qty on order, code sort, vendor,
   inactive flag.
-- **OPD** on part number → the open PO line with the *soonest ETA* for that
-  part drives the primary ETA/PO/in-transit columns. All matching open PO
-  lines (not just the soonest) are also concatenated into the "GSS" backup
-  columns (`PO Number GSS`, `ETA GSS`, ...), mirroring the manual
-  cross-reference block in the template.
-- **Production schedule** on boat number → boat completion date.
+- **OPD** on part number → open PO lines are allocated to boats by need date
+  (see stock/PO allocation below); the pegged line drives the primary
+  ETA/PO/in-transit columns. Cancelled lines are removed first: `QTY_OPEN <=
+  0.0001` (buyer's cancel sentinel) and lines whose `USER5`/`PO_LINE_TEXT` note
+  contains `cancel` or `\bNCR\b`. All *surviving* open PO lines (not just the
+  pegged one) are concatenated into the "GSS" backup columns (`PO Number GSS`,
+  `ETA GSS`, ...), mirroring the manual cross-reference block in the template.
+- **Production schedule** on boat number → boat completion date + delivery
+  option (shown in the BOAT label column, `TBC` when blank).
 
-`GAP` = `Order Required Date - ETA` (matches the template's own `=O-M`
-formula). A large positive gap means comfortable buffer; negative or small
-means risk.
+`ETA REQUIRED` = 6271 `WO Mat Due Date`; `GAP` = `ETA REQUIRED - ETA` (matches
+the template's own `=O-M` formula). A large positive gap means comfortable
+buffer; negative or small means risk.
+
+### Stock / PO allocation (per boat, by need date)
+
+For each material the boats are sorted by need date (`WO Mat Due Date`) and
+supply is consumed top-down: **on-hand stock first**, then open PO lines by
+ETA. A boat whose demand begins while on-hand stock is still available is a
+"using stock" boat and is **dropped**; the first boat past the on-hand quantity
+is pegged to the earliest incoming PO, and so on. Boats beyond all supply get
+no PO (a genuine, still-unordered shortage → flagged). This replaced an older
+material-level `on-hand >= total demand` check that wrongly pegged a boat to an
+incoming PO even when stock could have covered it.
 
 ### Mechanical drops vs. review flags
 
-Only rules that are unambiguous, categorical, and confirmed stable against
-real data are **hard drops** (row removed, counted in the printed log):
-inactive parts, non-critical consumable/tooling code-sorts, non-critical
-local-vendor parts, and the base filters baked into "open work order with
+**Hard drops** (row removed, counted in the printed log): inactive parts,
+**all** consumable / auxiliary-material code-sorts (no exception), non-critical
+local-vendor parts, cancelled/zero-qty OPD lines, "using stock" boats (per the
+allocation above), and the base filters baked into "open work order with
 outstanding qty" itself.
 
 Everything judgment-based is **kept and flagged** (yellow fill + a reason in
-the `NOTE` column) instead of silently deleted: critical consumables/local
-parts kept on an exception list, "using stock" cases, missing PO/schedule
-data, and - importantly - the gap/received/at-port criteria from
-`references/instructions.md`. Those criteria read like a hard filter on
-paper, but checking them against a real finished report showed ~31% of rows
-sent to production still had `GAP <= 7` - so in practice they're the buyer's
-final manual judgment call, not a deterministic rule. Treat them the same
-way: flag, don't delete. If the user wants a rule promoted to a hard drop
-(or a review flag loosened), that's a one-line change in `scripts/config.yaml`
-or a mask in `build_report.py`, not a redesign.
+the `NOTE` column) instead of silently deleted: missing PO/schedule data, and
+the gap/received/at-port criteria from `references/instructions.md`. Those
+criteria read like a hard filter on paper, but a real finished report still had
+~31% of rows with `GAP <= 7` - so in practice they're the buyer's final manual
+judgment call, not a deterministic rule. Flag, don't delete. Promoting a rule
+to a hard drop (or loosening a flag) is a one-line change in
+`scripts/config.yaml` or a mask in `build_report.py`, not a redesign.
 
-Because almost everything ambiguous is kept, the raw output can run to tens
-of thousands of rows - noticeably more than a typical hand-finished report.
-That's expected and by design (nothing real gets silently hidden); point the
+The output lands in the same ballpark as a hand-finished report (roughly a few
+thousand rows for a typical week, vs. the ~7.6k-row WK27 reference). Point the
 user at the preserved autofilter and the `NOTE`/fill-color column to slice
-down to what they care about, and mention this plainly rather than silently
-shipping a huge file.
+further to what they care about.
 
 ## Output
 
